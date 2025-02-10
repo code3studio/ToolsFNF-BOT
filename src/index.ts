@@ -151,7 +151,7 @@ async function generateImage(data: any) {
   ctx.font = "bold 60px 'Times New Roman'";
   drawMoneyGradientText(
     `${data.roi >= 0 ? "+" : "-"}${data.roi.toFixed(2)} %`,
-    90,
+    80,
     220
   );
 
