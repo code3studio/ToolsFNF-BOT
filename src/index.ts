@@ -55,12 +55,20 @@ client.on("interactionCreate", async (interaction) => {
       interaction.options as CommandInteractionOptionResolver
     ).getString("contract", true);
 
+  
+    const discordUser = {
+      username: interaction.user.username,
+      avatarUrl: interaction.user.displayAvatarURL({ extension: "png", size: 128 }),
+    };
+    
+
     try {
       const pnlData = await calculatePumpFunProfit(
         new PublicKey(walletAddress),
         new PublicKey(contractAddress)
       );
-      const imageBuffer = await generateImage(pnlData);
+      // Pass along the discordUser object as the second parameter.
+      const imageBuffer = await generateImage(pnlData, discordUser);
       const attachment = new AttachmentBuilder(imageBuffer, {
         name: "pnl.png",
       });
@@ -78,17 +86,23 @@ client.login(process.env.DISCORD_BOT_TOKEN);
    IMAGE GENERATION FUNCTIONS
    ============================ */
 
-async function generateImage(data: any) {
+// Now the generateImage function accepts a second parameter for Discord user info.
+interface DiscordUser {
+  username: string;
+  avatarUrl?: string;
+}
+
+async function generateImage(data: any, discordUser?: DiscordUser) {
   const width = 800;
   const height = 450;
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext("2d");
 
-  // Use the cached background image
+  // Draw the background image.
   const background = await getBackgroundImage();
   ctx.drawImage(background, 0, 0, width, height);
 
-  // Helper: Draw SOL values with a linear Solana gradient.
+  // --- Helper Functions ---
   function drawSolGradientText(text: string, x: number, y: number) {
     const textWidth = ctx.measureText(text).width;
     const gradient = ctx.createLinearGradient(x, y, x + textWidth, y);
@@ -98,7 +112,6 @@ async function generateImage(data: any) {
     ctx.fillText(text, x, y);
   }
 
-  // Helper: Draw ROI and Profit USD with a money-inspired green gradient.
   function drawMoneyGradientText(text: string, x: number, y: number) {
     const textWidth = ctx.measureText(text).width;
     const gradient = ctx.createLinearGradient(x, y, x + textWidth, y);
@@ -108,7 +121,6 @@ async function generateImage(data: any) {
     ctx.fillText(text, x, y);
   }
 
-  // Helper: Draw text with a gold gradient and a glow effect.
   function drawGoldGlowText(text: string, x: number, y: number) {
     ctx.font = "bold 30px 'Times New Roman'";
     const textWidth = ctx.measureText(text).width;
@@ -117,58 +129,76 @@ async function generateImage(data: any) {
     gradient.addColorStop(0.5, "#ffd700");
     gradient.addColorStop(1, "#daa520");
     ctx.fillStyle = gradient;
-
-    // Add a glow effect.
     ctx.shadowColor = "rgba(255, 223, 0, 0.8)";
     ctx.shadowBlur = 12;
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = 0;
-
     ctx.fillText(text, x, y);
     ctx.shadowColor = "transparent";
   }
 
-  // --- Ticker Name ---
+  // --- Draw Main Content ---
+  // Ticker Name
   drawGoldGlowText(`$${data.token_symbol}`, 200, 40);
-
-  // --- BOUGHT Section ---
+  // BOUGHT Section
   ctx.font = "bold 20px 'Times New Roman'";
   ctx.fillStyle = "white";
   ctx.fillText("BOUGHT", 40, 90);
   drawSolGradientText(`${data.totalSpentSOL.toFixed(2)} SOL`, 40, 120);
-
-  // --- SOLD Section ---
+  // SOLD Section
   ctx.fillStyle = "white";
   ctx.fillText("SOLD", 180, 90);
   drawSolGradientText(`${data.totalSalesSOL.toFixed(2)} SOL`, 180, 120);
-
-  // --- HOLDING Section ---
+  // HOLDS Section
   ctx.fillStyle = "white";
   ctx.fillText("HOLDS", 320, 90);
   drawSolGradientText(`${data.holding.toFixed(2)} SOL`, 320, 120);
-
-  // --- ROI Percentage ---
+  // ROI Percentage
   ctx.font = "bold 60px 'Times New Roman'";
   drawMoneyGradientText(
     `${data.roi >= 0 ? "+" : "-"}${data.roi.toFixed(2)} %`,
-    80,
+    0,
     220
   );
-
-  // --- PROFIT Section ---
+  // PROFIT Section
   ctx.font = "bold 25px 'Times New Roman'";
   ctx.fillStyle = "white";
   ctx.fillText("PROFIT", 40, 320);
   drawSolGradientText(`${data.profitSOL.toFixed(2)} SOL`, 40, 355);
-
   ctx.fillStyle = "white";
   ctx.fillText("PROFIT", 265, 320);
   drawMoneyGradientText(`${data.profitUSD.toFixed(2)} $`, 265, 355);
-
-  // --- Signature / Branding ---
+  // Signature / Branding
   const signatureX = 20;
   const signatureY = height - 15;
   drawGoldGlowText("GreedFNF", signatureX, signatureY);
+
+  // --- Draw Discord User Info in the Top Right Corner ---
+  if (discordUser) {
+    const margin = 20;
+    const avatarSize = 50;
+    // Set text properties and draw the username at the top-right.
+    ctx.font = "bold 20px sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillStyle = "white";
+    const textY = margin + 20; // Y-position for the username text (adjust as needed)
+    ctx.fillText(`@${discordUser.username}`, width - margin, textY);
+  
+    // Attempt to load and draw the avatar image below the username text.
+    if (discordUser.avatarUrl) {
+      try {
+        const avatarImage = await loadImage(discordUser.avatarUrl);
+        const avatarX = width - margin - avatarSize;
+        // Place the avatar image below the username text with a small gap.
+        const avatarY = textY + 10; 
+        ctx.drawImage(avatarImage, avatarX, avatarY, avatarSize, avatarSize);
+      } catch (err) {
+        console.error("Error loading avatar image:", err);
+      }
+    }
+    // Reset text alignment if needed.
+    ctx.textAlign = "left";
+  }
 
   return canvas.toBuffer();
 }
@@ -199,7 +229,7 @@ async function calculatePumpFunProfit(
   let totalFeesUSD = 0;
   let lastTxn: string | undefined = undefined;
 
-  // Limit iterations so we don't loop forever (adjust MAX_ITERATIONS as needed)
+  // Limit iterations so we don't loop forever
   let iteration = 0;
   const MAX_ITERATIONS = 10;
 
@@ -231,7 +261,6 @@ async function calculatePumpFunProfit(
       let chunkHasToken = false;
       let res: Response | null = null;
 
-      // Retry until we get an OK response.
       do {
         res = await fetch(
           "https://api.helius.xyz/v0/transactions?api-key=" + heliusKey,
@@ -260,7 +289,6 @@ async function calculatePumpFunProfit(
 
         chunkHasToken = true;
 
-        // Process token transfers concurrently.
         const transferPromises = txn.tokenTransfers.map(async (transfer) => {
           if (
             transfer.fromUserAccount === walletAddress.toString() ||
@@ -297,21 +325,15 @@ async function calculatePumpFunProfit(
           totalSalesUSD += result.sales;
         }
 
-        // Calculate fees using the SOL price from before (assumed fixed for these historical txns)
         totalFeesUSD += (txn.fee / 10 ** 9) * solana_price;
       }
       if (!chunkHasToken) continue;
     }
   } while (true);
 
-  // --- Separate Realized Profit from Held Value ---
-  // Realized profit is based solely on transactions that are completed:
   const realizedProfitUSD = totalSalesUSD - totalSpentUSD - totalFeesUSD;
-  // Held value is what you're still holding (which will update as prices change)
   const heldValueUSD = balanceUSD;
-  // Overall profit is the sum of the two.
   const profitUSD = realizedProfitUSD + heldValueUSD;
-  // ROI is computed only on the realized portion (since held value naturally fluctuates)
   const roi = (realizedProfitUSD / totalSpentUSD) * 100;
 
   console.log("Profit USD: ", profitUSD);
@@ -322,7 +344,7 @@ async function calculatePumpFunProfit(
     totalSpentSOL: totalSpentUSD / solana_price,
     totalFeesSOL: totalFeesUSD / solana_price,
     totalSalesSOL: totalSalesUSD / solana_price,
-    holding: heldValueUSD / solana_price, // held value in SOL
+    holding: heldValueUSD / solana_price,
     profitUSD,
     profitSOL: profitUSD / solana_price,
     token_symbol: contract_info.symbol,
@@ -390,7 +412,6 @@ async function getTokenInfo(mintAddress: string) {
       }),
     });
     const data = await response.json();
-    // Check that data.result and token_info exist
     if (!data.result || !data.result.token_info) {
       console.error("Unexpected response from getAsset:", data);
       return { price_per_token: 0, decimals: 0, symbol: "UNKNOWN" };
