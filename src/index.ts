@@ -151,19 +151,19 @@ async function generateImage(data: any) {
   ctx.font = "bold 60px 'Times New Roman'";
   drawMoneyGradientText(
     `${data.roi >= 0 ? "+" : "-"}${data.roi.toFixed(2)} %`,
-    125,
+    100,
     220
   );
 
   // --- PROFIT Section ---
   ctx.font = "bold 25px 'Times New Roman'";
   ctx.fillStyle = "white";
-  ctx.fillText("PROFIT SOL", 50, 320);
-  drawSolGradientText(`${data.profitSOL.toFixed(2)} SOL`, 50, 355);
+  ctx.fillText("PROFIT", 40, 320);
+  drawSolGradientText(`${data.profitSOL.toFixed(2)} SOL`, 40, 355);
 
   ctx.fillStyle = "white";
-  ctx.fillText("PROFIT USD", 275, 320);
-  drawMoneyGradientText(`${data.profitUSD.toFixed(2)} $`, 275, 355);
+  ctx.fillText("PROFIT", 265, 320);
+  drawMoneyGradientText(`${data.profitUSD.toFixed(2)} $`, 265, 355);
 
   // --- Signature / Branding ---
   const signatureX = 20;
