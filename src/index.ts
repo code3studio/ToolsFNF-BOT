@@ -144,14 +144,14 @@ async function generateImage(data: any) {
 
   // --- HOLDING Section ---
   ctx.fillStyle = "white";
-  ctx.fillText("HOLDING", 320, 90);
+  ctx.fillText("HOLDS", 320, 90);
   drawSolGradientText(`${data.holding.toFixed(2)} SOL`, 320, 120);
 
   // --- ROI Percentage ---
   ctx.font = "bold 60px 'Times New Roman'";
   drawMoneyGradientText(
     `${data.roi >= 0 ? "+" : "-"}${data.roi.toFixed(2)} %`,
-    100,
+    90,
     220
   );
 
