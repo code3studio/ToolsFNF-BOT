@@ -327,7 +327,7 @@ async function calculatePumpFunProfit(
     profitSOL: profitUSD / solana_price,
     token_symbol: contract_info.symbol,
     roi,
-    realizedProfitUSD, // optional: you can include these for clarity
+    realizedProfitUSD,
     heldValueUSD,
   };
 }
@@ -390,13 +390,18 @@ async function getTokenInfo(mintAddress: string) {
       }),
     });
     const data = await response.json();
+    // Check that data.result and token_info exist
+    if (!data.result || !data.result.token_info) {
+      console.error("Unexpected response from getAsset:", data);
+      return { price_per_token: 0, decimals: 0, symbol: "UNKNOWN" };
+    }
     const price_per_token = data.result.token_info.price_info.price_per_token;
     const decimals = data.result.token_info.decimals;
     const symbol = data.result.token_info.symbol;
     return { price_per_token, decimals, symbol };
   } catch (error) {
     console.error("Error fetching token info:", error);
-    return { price_per_token: 0, decimals: 0, symbol: "" };
+    return { price_per_token: 0, decimals: 0, symbol: "UNKNOWN" };
   }
 }
 
@@ -422,6 +427,10 @@ const fetchTokenBalance = async (
     }
   );
   const data = await response.json();
+  if (!data.result || !data.result.value) {
+    console.error("Unexpected response from getTokenAccountsByOwner:", data);
+    return 0;
+  }
   const balance =
     data.result.value[0]?.account?.data?.parsed?.info?.tokenAmount?.uiAmount || 0;
   return balance;
