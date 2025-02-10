@@ -6,7 +6,7 @@ import {
 } from "discord.js";
 import { ConfirmedSignatureInfo, Connection, PublicKey } from "@solana/web3.js";
 import dotenv from "dotenv";
-import { createCanvas, loadImage } from "canvas";
+import { createCanvas, loadImage, Image } from "canvas";
 import path from "path";
 
 dotenv.config();
@@ -27,6 +27,16 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
   ],
 });
+
+// --- Cache Background Image ---
+let cachedBackground: Image | null = null;
+async function getBackgroundImage(): Promise<Image> {
+  if (!cachedBackground) {
+    const backgroundPath = path.join(__dirname, "../public/assets/background.png");
+    cachedBackground = await loadImage(backgroundPath);
+  }
+  return cachedBackground;
+}
 
 client.once("ready", () => {
   console.log(`🤖 Logged in as ${client.user?.tag}`);
@@ -54,9 +64,9 @@ client.on("interactionCreate", async (interaction) => {
       const attachment = new AttachmentBuilder(imageBuffer, {
         name: "pnl.png",
       });
-      interaction.followUp({ files: [attachment] });
+      await interaction.followUp({ files: [attachment] });
     } catch (error) {
-      interaction.followUp("An error occurred while fetching PNL data");
+      await interaction.followUp("An error occurred while fetching PNL data");
       console.error(error);
     }
   }
@@ -64,49 +74,108 @@ client.on("interactionCreate", async (interaction) => {
 
 client.login(process.env.DISCORD_BOT_TOKEN);
 
+/* ============================
+   IMAGE GENERATION FUNCTIONS
+   ============================ */
+
 async function generateImage(data: any) {
   const width = 800;
   const height = 450;
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext("2d");
 
-  const backgroundPath = path.join(
-    __dirname,
-    "../public/assets/background.png"
-  );
-  const background = await loadImage(backgroundPath);
+  // Use the cached background image
+  const background = await getBackgroundImage();
   ctx.drawImage(background, 0, 0, width, height);
 
-  ctx.font = "bold 30px Arial";
+  // Helper: Draw SOL values with a linear Solana gradient.
+  function drawSolGradientText(text: string, x: number, y: number) {
+    const textWidth = ctx.measureText(text).width;
+    const gradient = ctx.createLinearGradient(x, y, x + textWidth, y);
+    gradient.addColorStop(0, "#9945FF");
+    gradient.addColorStop(1, "#14F195");
+    ctx.fillStyle = gradient;
+    ctx.fillText(text, x, y);
+  }
+
+  // Helper: Draw ROI and Profit USD with a money-inspired green gradient.
+  function drawMoneyGradientText(text: string, x: number, y: number) {
+    const textWidth = ctx.measureText(text).width;
+    const gradient = ctx.createLinearGradient(x, y, x + textWidth, y);
+    gradient.addColorStop(0, "#56ab2f");
+    gradient.addColorStop(1, "#a8e063");
+    ctx.fillStyle = gradient;
+    ctx.fillText(text, x, y);
+  }
+
+  // Helper: Draw text with a gold gradient and a glow effect.
+  function drawGoldGlowText(text: string, x: number, y: number) {
+    ctx.font = "bold 30px 'Times New Roman'";
+    const textWidth = ctx.measureText(text).width;
+    const gradient = ctx.createLinearGradient(x, y, x + textWidth, y);
+    gradient.addColorStop(0, "#b8860b");
+    gradient.addColorStop(0.5, "#ffd700");
+    gradient.addColorStop(1, "#daa520");
+    ctx.fillStyle = gradient;
+
+    // Add a glow effect.
+    ctx.shadowColor = "rgba(255, 223, 0, 0.8)";
+    ctx.shadowBlur = 12;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+
+    ctx.fillText(text, x, y);
+    ctx.shadowColor = "transparent";
+  }
+
+  // --- Ticker Name ---
+  drawGoldGlowText(`$${data.token_symbol}`, 200, 40);
+
+  // --- BOUGHT Section ---
+  ctx.font = "bold 20px 'Times New Roman'";
   ctx.fillStyle = "white";
-  ctx.fillText(`$${data.token_symbol}`, 200, 40);
+  ctx.fillText("BOUGHT", 40, 90);
+  drawSolGradientText(`${data.totalSpentSOL.toFixed(2)} SOL`, 40, 120);
 
-  ctx.font = "bold 20px Arial";
-  ctx.fillStyle = "yellow";
-  ctx.fillText(`BOUGHT`, 40, 90);
-  ctx.fillText(`${data.totalSpentSOL.toFixed(2)} SOL`, 40, 120);
-  ctx.fillText(`SOLD`, 200, 90);
-  ctx.fillText(`${data.totalSalesSOL.toFixed(2)} SOL`, 180, 120);
-  ctx.fillText(`HOLDING`, 320, 90);
-  ctx.fillText(`${data.holding.toFixed(2)} SOL`, 320, 120);
+  // --- SOLD Section ---
+  ctx.fillStyle = "white";
+  ctx.fillText("SOLD", 180, 90);
+  drawSolGradientText(`${data.totalSalesSOL.toFixed(2)} SOL`, 180, 120);
 
-  ctx.font = "bold 60px Arial";
-  ctx.fillStyle = "green";
-  ctx.fillText(
+  // --- HOLDING Section ---
+  ctx.fillStyle = "white";
+  ctx.fillText("HOLDING", 320, 90);
+  drawSolGradientText(`${data.holding.toFixed(2)} SOL`, 320, 120);
+
+  // --- ROI Percentage ---
+  ctx.font = "bold 60px 'Times New Roman'";
+  drawMoneyGradientText(
     `${data.roi >= 0 ? "+" : "-"}${data.roi.toFixed(2)} %`,
-    130,
+    125,
     220
   );
 
-  ctx.font = "bold 20px Arial";
-  ctx.fillStyle = "yellow";
-  ctx.fillText(`PROFIT SOL`, 50, 320);
-  ctx.fillText(`${data.profitSOL.toFixed(2)} SOL`, 50, 355);
-  ctx.fillText(`PROFIT USD`, 275, 320);
-  ctx.fillText(`${data.profitUSD.toFixed(2)} $`, 275, 355);
+  // --- PROFIT Section ---
+  ctx.font = "bold 25px 'Times New Roman'";
+  ctx.fillStyle = "white";
+  ctx.fillText("PROFIT SOL", 50, 320);
+  drawSolGradientText(`${data.profitSOL.toFixed(2)} SOL`, 50, 355);
+
+  ctx.fillStyle = "white";
+  ctx.fillText("PROFIT USD", 275, 320);
+  drawMoneyGradientText(`${data.profitUSD.toFixed(2)} $`, 275, 355);
+
+  // --- Signature / Branding ---
+  const signatureX = 20;
+  const signatureY = height - 15;
+  drawGoldGlowText("GreedFNF", signatureX, signatureY);
 
   return canvas.toBuffer();
 }
+
+/* ============================
+   CALCULATIONS & RPC FUNCTIONS
+   ============================ */
 
 async function calculatePumpFunProfit(
   walletAddress: PublicKey,
@@ -114,12 +183,14 @@ async function calculatePumpFunProfit(
 ) {
   console.log("Wallet Address: ", walletAddress.toString());
   console.log("Contract Address: ", myToken.toString());
+
   const usdc_info = await getTokenInfo(usdcAddress);
   const contract_info = await getTokenInfo(myToken.toString());
   const balance = await fetchTokenBalance(
     walletAddress.toString(),
     myToken.toString()
   );
+  // The current balance's USD value (this is dynamic)
   const balanceUSD = balance * contract_info.price_per_token;
   const solana_price = await getSolanaPrice();
 
@@ -128,7 +199,13 @@ async function calculatePumpFunProfit(
   let totalFeesUSD = 0;
   let lastTxn: string | undefined = undefined;
 
+  // Limit iterations so we don't loop forever (adjust MAX_ITERATIONS as needed)
+  let iteration = 0;
+  const MAX_ITERATIONS = 10;
+
   do {
+    if (iteration++ >= MAX_ITERATIONS) break;
+
     let sigs;
     try {
       sigs = await getSignaturesWithRetry(walletAddress, {
@@ -144,22 +221,20 @@ async function calculatePumpFunProfit(
     lastTxn = sigs[sigs.length - 1]?.signature;
 
     const sigsChunked: string[][] = [];
-
     for (let i = 0; i < sigs.length; i++) {
       const chunkIndex = Math.trunc(i / 100);
       if (!sigsChunked[chunkIndex]) sigsChunked[chunkIndex] = [];
       sigsChunked[chunkIndex].push(sigs[i].signature);
     }
 
-    console.log(sigsChunked)
     for (const chunk of sigsChunked) {
       let chunkHasToken = false;
       let res: Response | null = null;
 
+      // Retry until we get an OK response.
       do {
         res = await fetch(
-          "https://api.helius.xyz/v0/transactions?api-key=" +
-            heliusKey,
+          "https://api.helius.xyz/v0/transactions?api-key=" + heliusKey,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -174,19 +249,19 @@ async function calculatePumpFunProfit(
         if (txn.transactionError) continue;
 
         const containsToken = txn.accountData.some((ad) =>
-          ad.tokenBalanceChanges.some((tbc) => tbc.mint == myToken.toString())
+          ad.tokenBalanceChanges.some((tbc) => tbc.mint === myToken.toString())
         );
         if (!containsToken) continue;
 
         const accountData = txn.accountData.find(
-          (ad) => ad.account == walletAddress.toString()
+          (ad) => ad.account === walletAddress.toString()
         );
         if (!accountData) continue;
 
         chunkHasToken = true;
 
-        // Calculate total investment
-        txn.tokenTransfers.forEach(async (transfer) => {
+        // Process token transfers concurrently.
+        const transferPromises = txn.tokenTransfers.map(async (transfer) => {
           if (
             transfer.fromUserAccount === walletAddress.toString() ||
             transfer.toUserAccount === walletAddress.toString()
@@ -199,36 +274,47 @@ async function calculatePumpFunProfit(
             } else {
               tokenInfo = await getTokenInfo(transfer.mint);
             }
+            let spent = 0;
+            let sales = 0;
             if (
               transfer.fromUserAccount === walletAddress.toString() &&
-              transfer.mint != myToken.toString()
+              transfer.mint !== myToken.toString()
             ) {
-              totalSpentUSD += transfer.tokenAmount * tokenInfo.price_per_token;
+              spent = transfer.tokenAmount * tokenInfo.price_per_token;
             } else if (
               transfer.toUserAccount === walletAddress.toString() &&
-              transfer.mint != myToken.toString()
+              transfer.mint !== myToken.toString()
             ) {
-              totalSalesUSD += transfer.tokenAmount * tokenInfo.price_per_token;
+              sales = transfer.tokenAmount * tokenInfo.price_per_token;
             }
-            console.log("Total Spent USD: ", totalSpentUSD);
-            console.log("Total Sales USD: ", totalSalesUSD);
+            return { spent, sales };
           }
+          return { spent: 0, sales: 0 };
         });
+        const transferResults = await Promise.all(transferPromises);
+        for (const result of transferResults) {
+          totalSpentUSD += result.spent;
+          totalSalesUSD += result.sales;
+        }
 
-        // Calculate total fees
+        // Calculate fees using the SOL price from before (assumed fixed for these historical txns)
         totalFeesUSD += (txn.fee / 10 ** 9) * solana_price;
       }
-
-      if (!chunkHasToken) {
-        continue;
-      }
+      if (!chunkHasToken) continue;
     }
   } while (true);
 
-  const profitUSD = totalSalesUSD + balanceUSD - totalSpentUSD - totalFeesUSD;
-  console.log("Profit USD: ", profitUSD);
-  const roi = (profitUSD / totalSpentUSD) * 100;
+  // --- Separate Realized Profit from Held Value ---
+  // Realized profit is based solely on transactions that are completed:
+  const realizedProfitUSD = totalSalesUSD - totalSpentUSD - totalFeesUSD;
+  // Held value is what you're still holding (which will update as prices change)
+  const heldValueUSD = balanceUSD;
+  // Overall profit is the sum of the two.
+  const profitUSD = realizedProfitUSD + heldValueUSD;
+  // ROI is computed only on the realized portion (since held value naturally fluctuates)
+  const roi = (realizedProfitUSD / totalSpentUSD) * 100;
 
+  console.log("Profit USD: ", profitUSD);
   return {
     totalSpentUSD,
     totalFeesUSD,
@@ -236,11 +322,13 @@ async function calculatePumpFunProfit(
     totalSpentSOL: totalSpentUSD / solana_price,
     totalFeesSOL: totalFeesUSD / solana_price,
     totalSalesSOL: totalSalesUSD / solana_price,
-    holding: balanceUSD / solana_price,
+    holding: heldValueUSD / solana_price, // held value in SOL
     profitUSD,
     profitSOL: profitUSD / solana_price,
     token_symbol: contract_info.symbol,
     roi,
+    realizedProfitUSD, // optional: you can include these for clarity
+    heldValueUSD,
   };
 }
 
@@ -254,45 +342,33 @@ async function getSignaturesWithRetry(
   while (retries < maxRetries) {
     try {
       const temp_signatures = await connection.getSignaturesForAddress(address, options);
-      
       if (temp_signatures.length === (options.limit || 10)) {
         return temp_signatures;
       } else {
-        signatures = signatures.length > temp_signatures.length ? signatures : temp_signatures;
+        signatures =
+          signatures.length > temp_signatures.length ? signatures : temp_signatures;
       }
-
       console.warn(`Received ${signatures.length} signatures, retrying (attempt ${retries + 1})...`);
-      retries ++;
+      retries++;
       await new Promise((resolve) => setTimeout(resolve, 1000 * retries));
     } catch (error) {
-      console.error(
-        `Error fetching signatures (attempt ${retries + 1}):`,
-        error
-      );
+      console.error(`Error fetching signatures (attempt ${retries + 1}):`, error);
       retries++;
       await new Promise((resolve) => setTimeout(resolve, 1000 * retries));
     }
   }
-
   return signatures;
 }
 
 async function getSolanaPrice() {
   try {
-    const JUPITER_API_URL =
-      `https://api.jup.ag/price/v2?ids=${solTokenAddress}`;
-
-    const response = await fetch(
-      JUPITER_API_URL,
-      {
-        method: "GET",
-        headers: {"Content-Type": "application/json"},
-      }
-    );
-
+    const JUPITER_API_URL = `https://api.jup.ag/price/v2?ids=${solTokenAddress}`;
+    const response = await fetch(JUPITER_API_URL, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
     const data = await response.json();
     const solPrice = data.data[solTokenAddress].price;
-
     return solPrice;
   } catch (error) {
     console.error("Error fetching Solana price:", error);
@@ -303,7 +379,6 @@ async function getSolanaPrice() {
 async function getTokenInfo(mintAddress: string) {
   try {
     const url = `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`;
-  
     const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -314,7 +389,6 @@ async function getTokenInfo(mintAddress: string) {
         params: { id: mintAddress },
       }),
     });
-  
     const data = await response.json();
     const price_per_token = data.result.token_info.price_info.price_per_token;
     const decimals = data.result.token_info.decimals;
@@ -340,19 +414,16 @@ const fetchTokenBalance = async (
         id: 1,
         method: "getTokenAccountsByOwner",
         params: [
-          `${walletAddress}`,
-          { mint: `${contractAddress}` },
+          walletAddress,
+          { mint: contractAddress },
           { encoding: "jsonParsed" },
         ],
       }),
     }
   );
-
   const data = await response.json();
-
   const balance =
-    data.result.value[0]?.account?.data?.parsed?.info?.tokenAmount?.uiAmount ||
-    0;
+    data.result.value[0]?.account?.data?.parsed?.info?.tokenAmount?.uiAmount || 0;
   return balance;
 };
 
