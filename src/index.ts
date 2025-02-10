@@ -157,7 +157,7 @@ async function generateImage(data: any, discordUser?: DiscordUser) {
   ctx.font = "bold 60px 'Times New Roman'";
   drawMoneyGradientText(
     `${data.roi >= 0 ? "+" : "-"}${data.roi.toFixed(2)} %`,
-    0,
+    70,
     220
   );
   // PROFIT Section
