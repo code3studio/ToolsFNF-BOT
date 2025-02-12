@@ -6,7 +6,7 @@ import {
 } from "discord.js";
 import { ConfirmedSignatureInfo, Connection, PublicKey } from "@solana/web3.js";
 import dotenv from "dotenv";
-import { createCanvas, loadImage } from "canvas";
+import { createCanvas, loadImage, Image } from "canvas";
 import path, { resolve } from "path";
 import TopHolders from "./top_holders";
 
@@ -83,6 +83,15 @@ async function fetchWithRateLimit(url: string, options: RequestInit): Promise<an
   return data;
 }
 
+let cachedBackground: Image | null = null;
+async function getBackgroundImage(): Promise<Image> {
+  if (!cachedBackground) {
+    const backgroundPath = path.join(__dirname, "../public/assets/background.png");
+    cachedBackground = await loadImage(backgroundPath);
+  }
+  return cachedBackground;
+}
+
 client.once("ready", () => {
   console.log(`🤖 Logged in as ${client.user?.tag}`);
 });
@@ -93,6 +102,7 @@ client.on("interactionCreate", async (interaction) => {
   if (interaction.commandName === "pnl") {
     await interaction.deferReply();
 
+    console.log("PNL");
     const walletAddress = (
       interaction.options as CommandInteractionOptionResolver
     ).getString("wallet", true);
@@ -100,12 +110,16 @@ client.on("interactionCreate", async (interaction) => {
       interaction.options as CommandInteractionOptionResolver
     ).getString("contract", true);
 
+    const discordUser = {
+      username: interaction.user.username,
+      avatarUrl: interaction.user.displayAvatarURL({ extension: "png", size: 128 })
+    }
     try {
       const pnlData = await calculatePumpFunProfit(
         new PublicKey(walletAddress),
         new PublicKey(contractAddress)
       );
-      const imageBuffer = await generateImage(pnlData);
+      const imageBuffer = await generateImage(pnlData, discordUser);
       const attachment = new AttachmentBuilder(imageBuffer, {
         name: "pnl.png",
       });
@@ -147,46 +161,114 @@ client.on("interactionCreate", async (interaction) => {
 
 client.login(process.env.DISCORD_BOT_TOKEN);
 
-async function generateImage(data: any) {
+interface DiscordUser {
+  username: string;
+  avatarUrl?: string;
+}
+
+async function generateImage(data: any, discordUser?: DiscordUser) {
   const width = 800;
   const height = 450;
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext("2d");
 
-  const backgroundPath = path.join(
-    __dirname,
-    "../public/assets/background.png"
-  );
-  const background = await loadImage(backgroundPath);
+  // Draw the background image.
+  const background = await getBackgroundImage();
   ctx.drawImage(background, 0, 0, width, height);
 
-  ctx.font = "bold 30px Arial";
+  // --- Helper Functions ---
+  function drawSolGradientText(text: string, x: number, y: number) {
+    const textWidth = ctx.measureText(text).width;
+    const gradient = ctx.createLinearGradient(x, y, x + textWidth, y);
+    gradient.addColorStop(0, "#9945FF");
+    gradient.addColorStop(1, "#14F195");
+    ctx.fillStyle = gradient;
+    ctx.fillText(text, x, y);
+  }
+
+  function drawMoneyGradientText(text: string, x: number, y: number) {
+    const textWidth = ctx.measureText(text).width;
+    const gradient = ctx.createLinearGradient(x, y, x + textWidth, y);
+    gradient.addColorStop(0, "#56ab2f");
+    gradient.addColorStop(1, "#a8e063");
+    ctx.fillStyle = gradient;
+    ctx.fillText(text, x, y);
+  }
+
+  function drawGoldGlowText(text: string, x: number, y: number) {
+    ctx.font = "bold 30px 'Times New Roman'";
+    const textWidth = ctx.measureText(text).width;
+    const gradient = ctx.createLinearGradient(x, y, x + textWidth, y);
+    gradient.addColorStop(0, "#b8860b");
+    gradient.addColorStop(0.5, "#ffd700");
+    gradient.addColorStop(1, "#daa520");
+    ctx.fillStyle = gradient;
+    ctx.shadowColor = "rgba(255, 223, 0, 0.8)";
+    ctx.shadowBlur = 12;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+    ctx.fillText(text, x, y);
+    ctx.shadowColor = "transparent";
+  }
+
+  // --- Draw Main Content ---
+  // Ticker Name
+  drawGoldGlowText(`$${data.token_symbol}`, 200, 40);
+  // BOUGHT Section
+  ctx.font = "bold 20px 'Times New Roman'";
   ctx.fillStyle = "white";
-  ctx.fillText(`$${data.token_symbol}`, 200, 40);
-
-  ctx.font = "bold 20px Arial";
-  ctx.fillStyle = "yellow";
-  ctx.fillText(`BOUGHT`, 40, 90);
-  ctx.fillText(`${data.totalSpentSOL.toFixed(2)} SOL`, 40, 120);
-  ctx.fillText(`SOLD`, 200, 90);
-  ctx.fillText(`${data.totalSalesSOL.toFixed(2)} SOL`, 180, 120);
-  ctx.fillText(`HOLDING`, 320, 90);
-  ctx.fillText(`${data.holding.toFixed(2)} SOL`, 320, 120);
-
-  ctx.font = "bold 60px Arial";
-  ctx.fillStyle = "green";
-  ctx.fillText(
+  ctx.fillText("BOUGHT", 40, 90);
+  drawSolGradientText(`${data.totalSpentSOL.toFixed(2)} SOL`, 40, 120);
+  // SOLD Section
+  ctx.fillStyle = "white";
+  ctx.fillText("SOLD", 180, 90);
+  drawSolGradientText(`${data.totalSalesSOL.toFixed(2)} SOL`, 180, 120);
+  // HOLDS Section
+  ctx.fillStyle = "white";
+  ctx.fillText("HOLDS", 320, 90);
+  drawSolGradientText(`${data.holding.toFixed(2)} SOL`, 320, 120);
+  // ROI Percentage
+  ctx.font = "bold 60px 'Times New Roman'";
+  drawMoneyGradientText(
     `${data.roi >= 0 ? "+" : "-"}${data.roi.toFixed(2)} %`,
-    130,
+    70,
     220
   );
+  ctx.font = "bold 25px 'Times New Roman'";
+  ctx.fillStyle = "white";
+  ctx.fillText("PROFIT", 40, 320);
+  drawSolGradientText(`${data.profitSOL.toFixed(2)} SOL`, 40, 355);
+  ctx.fillStyle = "white";
+  ctx.fillText("PROFIT", 265, 320);
+  drawMoneyGradientText(`${data.profitUSD.toFixed(2)} $`, 265, 355);
+  const signatureX = 20;
+  const signatureY = height - 15;
+  drawGoldGlowText("GreedFNF", signatureX, signatureY);
 
-  ctx.font = "bold 20px Arial";
-  ctx.fillStyle = "yellow";
-  ctx.fillText(`PROFIT SOL`, 50, 320);
-  ctx.fillText(`${data.profitSOL.toFixed(2)} SOL`, 50, 355);
-  ctx.fillText(`PROFIT USD`, 275, 320);
-  ctx.fillText(`${data.profitUSD.toFixed(2)} $`, 275, 355);
+  if (discordUser) {
+    const margin = 20;
+    const avatarSize = 50;
+    ctx.font = "bold 20px sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillStyle = "white";
+    const textY = margin + 20; // Y-position for the username text (adjust as needed)
+    ctx.fillText(`@${discordUser.username}`, width - margin, textY);
+
+    // Attempt to load and draw the avatar image below the username text.
+    if (discordUser.avatarUrl) {
+      try {
+        const avatarImage = await loadImage(discordUser.avatarUrl);
+        const avatarX = width - margin - avatarSize;
+        // Place the avatar image below the username text with a small gap.
+        const avatarY = textY + 10;
+        ctx.drawImage(avatarImage, avatarX, avatarY, avatarSize, avatarSize);
+      } catch (err) {
+        console.error("Error loading avatar image:", err);
+      }
+    }
+    // Reset text alignment if needed.
+    ctx.textAlign = "left";
+  }
 
   return canvas.toBuffer();
 }
