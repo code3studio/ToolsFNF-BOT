@@ -2,7 +2,7 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-export default function TopHolders(mint: string) {
+export default async function TopHolders(mint: string) {
   console.log(mint);
   const GetLargestTokenAccounts = async () => {
     const body = {
@@ -23,12 +23,11 @@ export default function TopHolders(mint: string) {
     );
 
     const json = await response.json();
-    console.log(json);
     const resultValues = json.result.value;
-    console.log(resultValues);
     return resultValues;
   };
-  GetLargestTokenAccounts();
+  const top_holders =  await GetLargestTokenAccounts();
+  return top_holders;
 }
 
-TopHolders("3s5NwTxQKZwegP9mzrod1JLdK9LV1uyRh9gmfyhkpump");
+// TopHolders("3s5NwTxQKZwegP9mzrod1JLdK9LV1uyRh9gmfyhkpump");

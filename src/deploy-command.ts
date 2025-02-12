@@ -19,6 +19,15 @@ const commands = [
         .setDescription("Enter Contract Address")
         .setRequired(true)
     ),
+  new SlashCommandBuilder()
+    .setName("top-holders")
+    .setDescription("Get the top holders of a token")
+    .addStringOption((option) =>
+      option
+        .setName("contract")
+        .setDescription("Enter Contract Address")
+        .setRequired(true)
+    ),
 ].map((command) => command.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(
